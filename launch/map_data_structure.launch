@@ -1,5 +1,5 @@
 <launch>
-	<node pkg="map_data_structure" name="map_data_structure" output="screen">
+	<node pkg="map_data_structure" type="map_data_structure" name="map_data_structure" output="screen">
     <remap from="octomap_binary" to="X1/merged_map"/>
 	<remap from="octomap_full" to="octomap_ignore"/> -->
   </node>
