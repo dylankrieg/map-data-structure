@@ -231,11 +231,12 @@ target_link_libraries(map_data_structure
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(map_data_structure 
-	"-lX11"
-)
 
-target_link_libraries(map_data_structure
-	"-lpthread"
-)
+#target_link_libraries(map_data_structure 
+#	"-lX11"
+#)
+
+#target_link_libraries(map_data_structure
+#	"-lpthread"
+#)
 
