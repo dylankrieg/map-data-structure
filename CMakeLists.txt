@@ -2,13 +2,15 @@ cmake_minimum_required(VERSION 3.0.2)
 project(map_data_structure)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+##add_compile_options(-std=c++11)
+
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 project(map_data_structure)
 set(CMAKE_CXX_STANDARD 11)
+
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_modules/")
 
 find_package(catkin REQUIRED COMPONENTS
@@ -123,8 +125,8 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
+
 include_directories(
-# include
 	"${PROJECT_SOURCE_DIR}/src/"
 	"${PROJECT_SOURCE_DIR}/include/"
 	${catkin_INCLUDE_DIRS}
@@ -161,6 +163,12 @@ include_directories(
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
+
+#Specify libraries to link a library or executable target against
+#target_link_libraries(${PROJECT_NAME}_node
+#	${catkin_LIBRARIES}
+#)
+
 
 #############
 ## Install ##
@@ -222,3 +230,12 @@ add_executable(map_data_structure src/map_data_structure.cpp)
 target_link_libraries(map_data_structure
   ${catkin_LIBRARIES}
 )
+
+target_link_libraries(map_data_structure 
+	"-lX11"
+)
+
+target_link_libraries(map_data_structure
+	"-lpthread"
+)
+
