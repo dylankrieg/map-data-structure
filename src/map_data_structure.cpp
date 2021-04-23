@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <map>
 #include <vector>
+#include <list>
 //#include <iostream>
 //#include <fstream>
 //#include <cmath>
@@ -19,6 +20,7 @@ struct map_value_t {
   double var;
   double mean;
   double occupancy;
+  std::list<double> z_vals;
 };
 typedef struct map_value_t map_value;
 
@@ -49,48 +51,73 @@ class levelMap {
     std::cout << "X Dim Max: " << x_dim_max << "\nY Dim Max: " << y_dim_max << "\nZ Dim Max: " << z_dim_max << "\n";
   }
 
+  // checks if pos(x,y,z) is within the map
+  bool inMap(double x, double y, double z) {
+    if(x>=x_dim_min && x<=x_dim_max && y>=y_dim_min && y<=y_dim_max && z>=z_dim_min && z<=z_dim_max) {
+      return true;
+    }
+    return false;
+  }
+
+  // checks if voxel is occupied
+  bool isOcc(double occ) {
+    if(occ>occThreshold) {
+      return true;
+    }
+    return false;
+  }
+
+  // inserts a vector (x,y) as a key with corresponding map_value into hashmap 
+  void insertVoxel(double x, double y, double z, double occ) {
+    std::vector<double> pos{x,y}; //only (x,y) used for hash
+    map_value newMapValue=map_value();
+    double n,var,mean;
+    // check if (x,y) is in the map
+    if(posMap.find(pos)==posMap.end()) {
+      n=1; var=0; mean=z;
+      newMapValue.n=n; newMapValue.var=var; newMapValue.mean=mean;
+      newMapValue.occupancy=occ;
+    }
+    else {
+      double n_old=posMap[pos].n, var_old=posMap[pos].mean, mean_old=posMap[pos].var;
+      n=n_old+1;
+      mean=((mean_old*(n-1)) + z)/n;
+      var=((var_old*(n-1)) + ((z-mean)*(z-mean)))/n;
+      newMapValue.n=n; newMapValue.var=var; newMapValue.mean=mean;
+      newMapValue.occupancy=occ;
+    }
+    // add (x,y,level) data to map
+    posMap[pos]=newMapValue;
+  }
+
+  // generates the intervals 
+  void runAdvanced(x,y) {
+
+  
+
+  }
+
   // updates the hash map value in the multi-level map for each unique (x,y,level)
   void genMap() {
     octree->expand();
     octomap::OcTree::leaf_iterator end=octree->end_leafs();
     for(octomap::OcTree::leaf_iterator it=octree->begin_leafs();it!=end;++it) {
       double x=it.getX(), y=it.getY(), z=it.getZ();
-      double level=0.0;
       if(x>=x_dim_min && x<=x_dim_max && y>=y_dim_min && y<=y_dim_max && z>=z_dim_min && z<=z_dim_max) {
         double occ=it->getOccupancy();
-        if(occ>occThreshold) {
-          std::vector<double> pos{x,y,level};
-          map_value newMapValue=map_value();
-          double n,var,mean;
-          // check if (x,y,level) is in the map
-          if(posMap.find(pos)==posMap.end()) {
-            n=1; var=0; mean=z;
-            newMapValue.n=n; newMapValue.var=var; newMapValue.mean=mean;
-            newMapValue.occupancy=occ;
-          }
-          else {
-            double n_old=posMap[pos].n, var_old=posMap[pos].mean, mean_old=posMap[pos].var;
-            n=n_old+1;
-            mean=((mean_old*(n-1)) + z)/n;
-            var=((var_old*(n-1)) + ((z-mean)*(z-mean)))/n;
-            newMapValue.n=n; newMapValue.var=var; newMapValue.mean=mean;
-            newMapValue.occupancy=occ;
-          }
-          // add (x,y,level) data to map
-          posMap[pos]=newMapValue;
+        if(isOcc(occ) && inMap(x,y,z)) {
+          insertVoxel(x,y,z,occ);
         }
       }
     }
     std::cout << "Map Generated\n";
   }
 
-  // default level is 0.0
-  // z is not used currently as level is fixed
+  // z is not used
   // returns pointer to map_value (this is only so NULL can be used for not found)
   // Does NOT need to be freed after
   map_value* getMapValue(double x, double y, double z) {
-    double level=0.0;
-    std::vector<double> searchPos{x,y,0.0};
+    std::vector<double> searchPos{x,y};
     if(posMap.find(searchPos)!=posMap.end()) {
       return &posMap[searchPos];
     }
