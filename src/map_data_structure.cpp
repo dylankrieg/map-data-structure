@@ -8,19 +8,25 @@
 #include <map>
 #include <vector>
 #include <list>
-//#include <iostream>
-//#include <fstream>
-//#include <cmath>
-//#include "/home/dylan/catkin_ws/src/map_data_structure/src/CImg/CImg.h"
+#include <math.h> 
 
-
-// type of elements in hashmap
-struct map_value_t {
+// type of each interval in hashmap
+struct interval_t {
+  bool intervalType; // true if horizontal, false if vertical
   double n;
-  double var;
+  double std;
   double mean;
   double occupancy;
-  std::list<double> z_vals;
+  double z_max;
+  double z_min; // for testing
+  double d; // z_max - z_min
+};
+typedef struct interval_t interval;
+
+// type of each cell in hashmap
+struct map_value_t {
+  std::list<interval> intervals;
+  std::list<double> *z_vals; // for testing
 };
 typedef struct map_value_t map_value;
 
@@ -32,7 +38,9 @@ class levelMap {
   double res;
   double x_dim_min,y_dim_min,z_dim_min;
   double x_dim_max,y_dim_max,z_dim_max;
-
+  double gap_distance=1; // free space value (m) 
+  double thickness_value=0.1; // minimum thickness for horizontal interval (m)
+  
   // constructor
   levelMap(octomap::OcTree* Octree) {
       octree=Octree;
@@ -67,37 +75,170 @@ class levelMap {
     return false;
   }
 
+
   // inserts a vector (x,y) as a key with corresponding map_value into hashmap 
-  void insertVoxel(double x, double y, double z, double occ) {
-    std::vector<double> pos{x,y}; //only (x,y) used for hash
-    map_value newMapValue=map_value();
-    double n,var,mean;
-    // check if (x,y) is in the map
+  void insertVoxel(double x, double y, double z) {
+    std::vector<double> pos{x,y}; // only (x,y) used for hash
+    //new values to be assigned
+    double n,std,mean,d;
+    // if (x,y) is NOT in the map
     if(posMap.find(pos)==posMap.end()) {
-      n=1; var=0; mean=z;
-      newMapValue.n=n; newMapValue.var=var; newMapValue.mean=mean;
-      newMapValue.occupancy=occ;
+      map_value newMapValue=map_value();
+      // generate the first interval
+      interval newInterval;
+      newMapValue.intervals.push_back(newInterval);
+      // assign values to new interval
+      
+      newMapValue.intervals.back().z_max=z;
+      newMapValue.intervals.back().z_min=z;
+
+      n=1; std=0; mean=z,d=0;
+      newMapValue.intervals.back().n=1;
+      newMapValue.intervals.back().std=std;
+      newMapValue.intervals.back().mean=z;
+      newMapValue.intervals.back().d=d;
+
+      // New 1 voxel interval is horizontal (true)
+      newMapValue.intervals.back().intervalType=true;
+
+      //testing
+      newMapValue.z_vals=new std::list<double>; // makes list for z_values
+      newMapValue.z_vals->push_back(z); 
+      posMap[pos]=newMapValue;
+      // add z val to array
+      //n=1; std=0; mean=z;
+      //newMapValue.n=n; newMapValue.std=std; newMapValue.mean=mean;
+      //newMapValue.occupancy=occ;
     }
+
+    // if (x,y) is in the map
     else {
-      double n_old=posMap[pos].n, var_old=posMap[pos].mean, mean_old=posMap[pos].var;
-      n=n_old+1;
-      mean=((mean_old*(n-1)) + z)/n;
-      var=((var_old*(n-1)) + ((z-mean)*(z-mean)))/n;
-      newMapValue.n=n; newMapValue.var=var; newMapValue.mean=mean;
-      newMapValue.occupancy=occ;
+      map_value newMapValue=posMap[pos];
+      double z_max=newMapValue.intervals.back().z_max;
+      
+      //check if greater than last z value
+      assert(z>=z_max); 
+
+      // add a new interval if there is a gap
+      if((z-z_max)>=gap_distance) {
+        
+        interval newInterval;
+        newMapValue.intervals.push_back(newInterval);
+        
+        // add z to new interval
+        newMapValue.intervals.back().z_min=z;
+        newMapValue.intervals.back().z_max=z;
+
+        n=1; std=0; mean=z,d=0;
+        newMapValue.intervals.back().n=n;
+        newMapValue.intervals.back().std=std;
+        newMapValue.intervals.back().mean=mean;
+        newMapValue.intervals.back().d=0;
+        // New 1 voxel interval is horizontal (true)
+        newMapValue.intervals.back().intervalType=true;
+
+
+      }
+      // no gap so update existing interval
+      else {
+        // if interval height > thickness_value 
+        // change interval type to vertical (false) 
+        // and update mean to z_max and variance to var of
+        if(z - newMapValue.intervals.back().z_min > thickness_value) {
+          // update existing interval
+          newMapValue.intervals.back().z_max=z;
+          newMapValue.intervals.back().intervalType=false; 
+
+          n=newMapValue.intervals.back().n + 1;
+          std=0;
+          mean=z;
+          d=z - newMapValue.intervals.back().z_min;
+
+          newMapValue.intervals.back().std=-1; // ? (set to dist from mean)
+          newMapValue.intervals.back().mean=z; // set mean=z_max
+          newMapValue.intervals.back().d = d;
+        }
+
+        else {
+          // retrieve old values
+          double n_old=newMapValue.intervals.back().n, std_old=newMapValue.intervals.back().std, mean_old=newMapValue.intervals.back().mean;
+
+          // update existing interval
+          newMapValue.intervals.back().z_max=z;
+
+          n=n_old+1;
+          mean=((mean_old*(n-1)) + z)/n;
+          double var_old=std_old * std_old; //var=std^2
+          double var=((var_old*(n-1)) + ((z-mean)*(z-mean)))/n;
+          std=sqrt(var);
+
+          newMapValue.intervals.back().n=n;
+          newMapValue.intervals.back().std=std;
+          newMapValue.intervals.back().mean=mean;
+        }
+
+
+      }
+      // testing 
+      newMapValue.z_vals->push_back(z); 
+      posMap[pos]=newMapValue;
     }
-    // add (x,y,level) data to map
-    posMap[pos]=newMapValue;
   }
-
-  // generates the intervals 
-  void runAdvanced(x,y) {
-
   
 
+  void printList(std::list<double> doubleList) {
+    std::cout << "[";
+    int i=0;
+    int listLen=doubleList.size();
+    for (double item : doubleList) {
+      std::cout << item;
+      if(i>0 && i!=(listLen-1)) {
+        std::cout << ",";
+      }
+      i++;
+
+    }
+    std::cout << "]\n";
   }
 
-  // updates the hash map value in the multi-level map for each unique (x,y,level)
+
+  // test function that outputs each cell and its interval(s) with interval information
+  void testing() {
+    std::cout << "Running Testing \n";
+    std::map<std::vector<double>,map_value>::iterator iter;
+    // iterate over map cells
+    for(iter=posMap.begin(); iter!=posMap.end();++iter) {
+      std::cout << "---------\n";
+      std::cout << "Cell Pos: (" << iter->first[0] << "," << iter->first[1] << ")\n";
+      // prints all the z values
+      std::cout << "Z Vals: ";
+      printList(*(iter->second.z_vals));
+      delete (iter->second.z_vals);
+      // prints all the interval maxima and minima
+      int i=1;
+      for (interval item : iter->second.intervals) {
+        std::cout << "Interval #" << i << "\n";
+        std::cout << "Type: ";
+        if(item.intervalType==true) {
+          std::cout << "horizontal \n";
+        }
+        else {
+          std::cout << "vertical \n";
+        }
+        std::cout << "N: " << item.n << "\n";
+        std::cout << "Mean: " << item.mean << "\n";
+        std::cout << "STD: " << item.std << "\n";
+        std::cout << "Z Min: " << item.z_min << "\n";
+        std::cout << "Z Max: " << item.z_max << "\n";
+        std::cout << "D: " << item.d << "\n";
+        i++;
+      }
+      std::cout << "---------\n";
+    }
+  }
+
+
+  // creates a cell in the hash map for each unique (x,y)
   void genMap() {
     octree->expand();
     octomap::OcTree::leaf_iterator end=octree->end_leafs();
@@ -106,15 +247,16 @@ class levelMap {
       if(x>=x_dim_min && x<=x_dim_max && y>=y_dim_min && y<=y_dim_max && z>=z_dim_min && z<=z_dim_max) {
         double occ=it->getOccupancy();
         if(isOcc(occ) && inMap(x,y,z)) {
-          insertVoxel(x,y,z,occ);
+          insertVoxel(x,y,z);
         }
       }
     }
     std::cout << "Map Generated\n";
+    testing();
   }
 
-  // z is not used
-  // returns pointer to map_value (this is only so NULL can be used for not found)
+  // returns pointer to map_value
+  // NULL indicates the value was not found
   // Does NOT need to be freed after
   map_value* getMapValue(double x, double y, double z) {
     std::vector<double> searchPos{x,y};
