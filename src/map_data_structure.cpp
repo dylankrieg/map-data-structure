@@ -34,7 +34,7 @@ class levelMap {
   public:
   octomap::OcTree* octree;
   std::map<std::vector<double>,map_value> posMap;
-  double occThreshold=0.5;
+  double occThreshold=0.25;
   double res;
   double x_dim_min,y_dim_min,z_dim_min;
   double x_dim_max,y_dim_max,z_dim_max;
@@ -42,9 +42,14 @@ class levelMap {
   double thickness_value=0.1; // minimum thickness for horizontal interval (m)
   
   // constructor
-  levelMap(octomap::OcTree* Octree) {
-      octree=Octree;
-      updateMapParams();
+  levelMap() {
+
+  }
+
+  // adds 
+  void setOctomap(octomap::OcTree* Octree) {
+    octree=Octree;
+    updateMapParams();
   }
 
   // updates the resolution and dimensions of the tree
@@ -76,19 +81,31 @@ class levelMap {
   }
 
 
+  // Inefficient helper function O(n) for generating map from voxel pos
+  // Does not require z values at (x,y) to inserted in increasing order 
   // inserts a vector (x,y) as a key with corresponding map_value into hashmap 
-  void insertVoxel(double x, double y, double z) {
+  void insertVoxelAny(double x, double y, double z) {
+  }
+
+  
+  // Efficient helper function for generating map from octomap voxel position
+  // Requires z values to be inserted in increasing order at (x,y)
+  // inserts a vector (x,y) as a key with corresponding map_value into hashmap 
+  void insertVoxelIn(double x, double y, double z) {
     std::vector<double> pos{x,y}; // only (x,y) used for hash
+    
     //new values to be assigned
     double n,std,mean,d;
+    map_value newMapValue;
+
     // if (x,y) is NOT in the map
     if(posMap.find(pos)==posMap.end()) {
-      map_value newMapValue=map_value();
+      newMapValue=map_value();
       // generate the first interval
       interval newInterval;
       newMapValue.intervals.push_back(newInterval);
+
       // assign values to new interval
-      
       newMapValue.intervals.back().z_max=z;
       newMapValue.intervals.back().z_min=z;
 
@@ -104,16 +121,11 @@ class levelMap {
       //testing
       newMapValue.z_vals=new std::list<double>; // makes list for z_values
       newMapValue.z_vals->push_back(z); 
-      posMap[pos]=newMapValue;
-      // add z val to array
-      //n=1; std=0; mean=z;
-      //newMapValue.n=n; newMapValue.std=std; newMapValue.mean=mean;
-      //newMapValue.occupancy=occ;
     }
 
     // if (x,y) is in the map
     else {
-      map_value newMapValue=posMap[pos];
+      newMapValue=posMap[pos];
       double z_max=newMapValue.intervals.back().z_max;
       
       //check if greater than last z value
@@ -123,6 +135,8 @@ class levelMap {
       if((z-z_max)>=gap_distance) {
         
         interval newInterval;
+
+
         newMapValue.intervals.push_back(newInterval);
         
         // add z to new interval
@@ -136,7 +150,6 @@ class levelMap {
         newMapValue.intervals.back().d=0;
         // New 1 voxel interval is horizontal (true)
         newMapValue.intervals.back().intervalType=true;
-
 
       }
       // no gap so update existing interval
@@ -154,7 +167,8 @@ class levelMap {
           mean=z;
           d=z - newMapValue.intervals.back().z_min;
 
-          newMapValue.intervals.back().std=-1; // ? (set to dist from mean)
+          newMapValue.intervals.back().n = n;
+          newMapValue.intervals.back().std=0.5; // ? (set to dist from mean)
           newMapValue.intervals.back().mean=z; // set mean=z_max
           newMapValue.intervals.back().d = d;
         }
@@ -176,68 +190,14 @@ class levelMap {
           newMapValue.intervals.back().std=std;
           newMapValue.intervals.back().mean=mean;
         }
-
-
       }
       // testing 
       newMapValue.z_vals->push_back(z); 
-      posMap[pos]=newMapValue;
     }
-  }
-  
-
-  void printList(std::list<double> doubleList) {
-    std::cout << "[";
-    int i=0;
-    int listLen=doubleList.size();
-    for (double item : doubleList) {
-      std::cout << item;
-      if(i>0 && i!=(listLen-1)) {
-        std::cout << ",";
-      }
-      i++;
-
-    }
-    std::cout << "]\n";
+    posMap[pos]=newMapValue;
   }
 
-
-  // test function that outputs each cell and its interval(s) with interval information
-  void testing() {
-    std::cout << "Running Testing \n";
-    std::map<std::vector<double>,map_value>::iterator iter;
-    // iterate over map cells
-    for(iter=posMap.begin(); iter!=posMap.end();++iter) {
-      std::cout << "---------\n";
-      std::cout << "Cell Pos: (" << iter->first[0] << "," << iter->first[1] << ")\n";
-      // prints all the z values
-      std::cout << "Z Vals: ";
-      printList(*(iter->second.z_vals));
-      delete (iter->second.z_vals);
-      // prints all the interval maxima and minima
-      int i=1;
-      for (interval item : iter->second.intervals) {
-        std::cout << "Interval #" << i << "\n";
-        std::cout << "Type: ";
-        if(item.intervalType==true) {
-          std::cout << "horizontal \n";
-        }
-        else {
-          std::cout << "vertical \n";
-        }
-        std::cout << "N: " << item.n << "\n";
-        std::cout << "Mean: " << item.mean << "\n";
-        std::cout << "STD: " << item.std << "\n";
-        std::cout << "Z Min: " << item.z_min << "\n";
-        std::cout << "Z Max: " << item.z_max << "\n";
-        std::cout << "D: " << item.d << "\n";
-        i++;
-      }
-      std::cout << "---------\n";
-    }
-  }
-
-
+  // generates map from an octomap so setOctomap() must be called first
   // creates a cell in the hash map for each unique (x,y)
   void genMap() {
     octree->expand();
@@ -247,12 +207,61 @@ class levelMap {
       if(x>=x_dim_min && x<=x_dim_max && y>=y_dim_min && y<=y_dim_max && z>=z_dim_min && z<=z_dim_max) {
         double occ=it->getOccupancy();
         if(isOcc(occ) && inMap(x,y,z)) {
-          insertVoxel(x,y,z);
+          insertVoxelIn(x,y,z);
         }
       }
     }
     std::cout << "Map Generated\n";
     testing();
+  }
+  
+
+  void printList(std::list<double> doubleList) {
+    std::cout << "[";
+    int i=0;
+    int listLen=doubleList.size();
+    for (double item : doubleList) {
+      std::cout << item;
+      if(listLen!=1 && i!=(listLen-1)) {
+        std::cout << ",";
+      }
+      i++;
+    }
+    std::cout << "]\n";
+  }
+
+  // takes in NULL array of 8 neighbors as input
+  // fills array with vector of neighbor positions
+  // array not declared locally and returned since stack pointer is undefined and heap is slow 
+  // EX: 
+  // std::vector<double> validNeighborPos[8]
+  // getNeighbors(1,1,1,validNeighborPos);
+  void getNeighbors(double x, double y, double z,std::vector<double> validNeighborPos[8]) {
+    std::cout << "Searching for Neigbors of: (" << x << "," << y << "," << z << ") \n";
+    double x_deltas_coef[8]={1,1,0,-1,-1,-1,0,1};
+    double y_delta_coef[8]={0,1,1,1,0,-1,-1,-1};
+    double x_delta, y_delta;
+    for(int i=0;i<8;i++) {
+      x_delta=x_deltas_coef[i] * res;
+      y_delta=y_delta_coef[i] * res;
+      map_value* neighborCell=getMapValue(x + x_delta,y + y_delta,z);
+      if(neighborCell!=NULL) {
+        // iterate through intervals and check if z is within 2 std of a mean
+        std::list<interval>* neighborIntervals=&(neighborCell->intervals);
+        std::list<interval>::iterator interval_it;
+        for(interval_it = neighborIntervals->begin(); interval_it != neighborIntervals->end(); ++interval_it) {
+          std::cout << "(" << (x+x_delta) << "," << (y+y_delta) << ")\n"; 
+          double interval_mean = interval_it->mean;
+          double interval_std = interval_it->std;
+          std::cout << "Mean: " << interval_mean << "\n";
+          std::cout << "Std: " << interval_std << "\n";
+          // check if z is within 2 std of mean
+          if(z >= interval_mean-(2*interval_std) && z <= interval_mean+(2*interval_std)) {
+            validNeighborPos[i]={x + x_delta, y + y_delta, z}; // unsure about z to return for neighbor?
+          }
+        }
+      }
+    }
   }
 
   // returns pointer to map_value
@@ -265,6 +274,60 @@ class levelMap {
     }
     std::cout << "Value not in map\n";
     return NULL;
+  }
+
+  // test function to print intervals in cell (x,y)
+  void printCell(double x, double y) {
+    std::vector<double> pos{x,y};
+    map_value cell=posMap[pos];
+    std::cout << "---------\n";
+    std::cout << "Cell Pos: (" << x << "," << y << ")\n";
+    // prints all the z values in cell (x,y)
+    std::cout << "Z Vals: ";
+    printList(*cell.z_vals);
+    int i=1;
+    for (interval item : cell.intervals) {
+      std::cout << "Interval #" << i << "\n";
+      std::cout << "Type: ";
+      if(item.intervalType==true) {
+        std::cout << "horizontal \n";
+      }
+      else {
+        std::cout << "vertical \n";
+      }
+      std::cout << "N: " << item.n << "\n";
+      std::cout << "Mean: " << item.mean << "\n";
+      std::cout << "STD: " << item.std << "\n";
+      std::cout << "Z Min: " << item.z_min << "\n";
+      std::cout << "Z Max: " << item.z_max << "\n";
+      std::cout << "D: " << item.d << "\n";
+      i++;
+    }
+    std::cout << "---------\n";
+  }
+
+  // test function that outputs each cell and its interval(s) with interval information
+  void testing() {
+    std::cout << "Running Testing \n";
+    std::map<std::vector<double>,map_value>::iterator iter;
+    // iterate over map cells
+    for(iter=posMap.begin(); iter!=posMap.end();++iter) {
+      std::vector<double> pos=iter->first;
+      double x=pos[0];
+      double y=pos[1];
+      printCell(x,y);
+    }
+    // test neighbors
+    std::vector<double> validNeighborPos[8];
+    getNeighbors(0.825,4.425,2.0,validNeighborPos);
+    // print neighbors
+    std::cout << "Neighbors: ";
+    for(int i=0;i<8;i++) {
+      //if vector is not empty
+      if(!validNeighborPos[i].empty()) {
+        std::cout << "(" << validNeighborPos[i][0] << "," << validNeighborPos[i][1] << ") \n";
+      }
+    }
   }
 };
 
@@ -282,7 +345,7 @@ void CallbackOctomapBinary(const octomap_msgs::Octomap::ConstPtr msg) {
 }
 
 void CallbackOctomapFull(const octomap_msgs::Octomap::ConstPtr msg) {
-  if (msg->data.size() == 0) {
+  if (msg->data.size() == 0) {    
     return;
   }
   delete octree;
@@ -308,7 +371,8 @@ int main(int argc, char **argv) {
     std::cout << "Waiting for map..\n";
     if(map_updated) {
       // create map
-      levelMap newMap=levelMap(octree);
+      levelMap newMap=levelMap();
+      newMap.setOctomap(octree);
 
       // generate map
       newMap.genMap(); 
