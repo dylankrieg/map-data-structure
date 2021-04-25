@@ -9,6 +9,7 @@
 #include <vector>
 #include <list>
 #include <math.h> 
+#include <visualization_msgs/Marker.h>
 
 // type of each interval in hashmap
 struct interval_t {
@@ -39,11 +40,10 @@ class levelMap {
   double x_dim_min,y_dim_min,z_dim_min;
   double x_dim_max,y_dim_max,z_dim_max;
   double gap_distance=1; // free space value (m) 
-  double thickness_value=0.1; // minimum thickness for horizontal interval (m)
-  
+  double thickness_value=0.1; // maximum thickness for horizontal interval (m)
+
   // constructor
   levelMap() {
-
   }
 
   // adds 
@@ -230,7 +230,7 @@ class levelMap {
     std::cout << "]\n";
   }
 
-  // takes in NULL array of 8 neighbors as input
+  // takes in array of 8 empty vectors
   // fills array with vector of neighbor positions
   // array not declared locally and returned since stack pointer is undefined and heap is slow 
   // EX: 
@@ -329,6 +329,64 @@ class levelMap {
       }
     }
   }
+
+
+  // displays multi-level map in RVIZ
+  void displayMap(ros::Publisher marker_pub) {
+      visualization_msgs::Marker markerMsg;
+
+      markerMsg.header.frame_id="my_frame";
+      markerMsg.header.stamp=ros::Time::now();
+      markerMsg.ns="map_data_structure";
+      markerMsg.action = visualization_msgs::Marker::ADD;
+      markerMsg.pose.orientation.w=1.0;
+      markerMsg.type=visualization_msgs::Marker::CUBE_LIST;
+    
+      markerMsg.scale.x=res;
+      markerMsg.scale.y=res;
+      markerMsg.scale.z=0.05;
+      
+
+      std::cout << "Displaying Intervals Testing \n";
+      std::map<std::vector<double>,map_value>::iterator iter;
+
+      // iterate over map cells and display each interval at (x,y,mean)
+      for(iter=posMap.begin(); iter!=posMap.end();++iter) {
+        std::vector<double> pos=iter->first;
+        geometry_msgs::Point temp;
+        temp.x=pos[0];
+        temp.y=pos[1];
+        std_msgs::ColorRGBA c;
+        map_value cell=posMap[pos];
+        for (interval item : cell.intervals) {
+          temp.z=item.mean;
+          markerMsg.points.push_back(temp);
+          // color plane red if interval is vertical 
+          if(item.intervalType==false) {
+            c.r=1; c.g=0; c.b=0; c.a=1;
+          }
+          // color plane yellow if interval is horizontal
+          else {
+            c.r=1; c.g=1; c.b=0; c.a=1;
+          }
+          markerMsg.colors.push_back(c);
+        }
+        
+      }
+
+      //markerMsg.lifetime = ros::Duration();
+      while (marker_pub.getNumSubscribers() < 1) {
+        if(!ros::ok()) {
+          return;
+        }
+        ROS_WARN_ONCE("Please create a subscriber to the marker");
+        sleep(1);
+      }
+      marker_pub.publish(markerMsg);
+      markerMsg.points.clear();
+      markerMsg.colors.clear();      
+
+  }
 };
 
 octomap::OcTree* octree;
@@ -354,6 +412,8 @@ void CallbackOctomapFull(const octomap_msgs::Octomap::ConstPtr msg) {
   return;
 }
 
+
+
 int main(int argc, char **argv) {
   // Node declaration
   ros::init(argc, argv, "write_octomap_to_file_new");
@@ -362,8 +422,13 @@ int main(int argc, char **argv) {
   // Subscribers
   ros::Subscriber sub_octomap_binary=n.subscribe("octomap_binary", 1, CallbackOctomapBinary);
   ros::Subscriber sub_octomap_full=n.subscribe("octomap_full", 1, CallbackOctomapFull);
-
+  
+  // Publisher
+  ros::Publisher marker_pub=n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
+  
   bool message_received=false;
+  
+  levelMap newMap;
   ros::Rate r(1.0); // 1 Hz
   while(ros::ok() && !map_updated) {
     r.sleep();
@@ -371,12 +436,17 @@ int main(int argc, char **argv) {
     std::cout << "Waiting for map..\n";
     if(map_updated) {
       // create map
-      levelMap newMap=levelMap();
+      newMap=levelMap();
       newMap.setOctomap(octree);
-
-      // generate map
-      newMap.genMap(); 
+      newMap.genMap();
     }
+  }
+  // display map in rviz
+  while(ros::ok()) {
+    r.sleep();
+    ros::spinOnce();
+    std::cout << "Displaying Map...\n";
+    newMap.displayMap(marker_pub);
   }
   //after receiving map
   return 0;
