@@ -41,7 +41,7 @@ class levelMap {
   double x_dim_max,y_dim_max,z_dim_max;
   double gap_distance=1; // free space value (m) 
   double thickness_value=0.1; // maximum thickness for horizontal interval (m)
-
+  bool mapPublished=false;
   // constructor
   levelMap() {
   }
@@ -212,7 +212,6 @@ class levelMap {
       }
     }
     std::cout << "Map Generated\n";
-    testing();
   }
   
 
@@ -230,14 +229,41 @@ class levelMap {
     std::cout << "]\n";
   }
 
+
+  // patch/interval is defined as traversible if at least 5 of the cell's neighbors exist
+  // and the distance in mean height between the patch and its neighbor is less than 10 cm
+  // takes in patch (x,y,z) as input
+  bool isTraversible(double x, double y, double z) {
+    std::cout << "Checking traversibility of (" << x << "," << y << ")\n";
+    interval* validNeighborIntervals[8]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
+    getNeighbors(x,y,z,validNeighborIntervals);
+
+    int numNeighbors=0;
+    // iterate through list of neighbors
+    for(int i=0; i<8;i++) {
+      interval* neighborInterval=validNeighborIntervals[i];
+      if(neighborInterval!=NULL) {
+        numNeighbors+=1;
+        // check if height difference is not less than 10 cm (0.1 m)
+        if((neighborInterval->mean - 0.1 <= z && neighborInterval->mean + 0.1 >= z)==false) {
+          return false;
+        }
+      }
+    }
+    if(numNeighbors>=5) {
+      return true;
+    }
+    return false;
+  }
+
   // takes in array of 8 empty vectors
-  // fills array with vector of neighbor positions
+  // fills array with pointers to neighbor intervals in clockwise order from 0 degrees
   // array not declared locally and returned since stack pointer is undefined and heap is slow 
   // EX: 
-  // std::vector<double> validNeighborPos[8]
-  // getNeighbors(1,1,1,validNeighborPos);
-  void getNeighbors(double x, double y, double z,std::vector<double> validNeighborPos[8]) {
-    std::cout << "Searching for Neigbors of: (" << x << "," << y << "," << z << ") \n";
+  // interval* validNeighborIntervals[8]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL}
+  // getNeighbors(1,1,1,validNeighborIntervals);
+  void getNeighbors(double x, double y, double z, interval* validNeighborIntervals[8]) {
+    //std::cout << "Searching for Neigbors of: (" << x << "," << y << "," << z << ") \n";
     double x_deltas_coef[8]={1,1,0,-1,-1,-1,0,1};
     double y_delta_coef[8]={0,1,1,1,0,-1,-1,-1};
     double x_delta, y_delta;
@@ -249,15 +275,16 @@ class levelMap {
         // iterate through intervals and check if z is within 2 std of a mean
         std::list<interval>* neighborIntervals=&(neighborCell->intervals);
         std::list<interval>::iterator interval_it;
+        
         for(interval_it = neighborIntervals->begin(); interval_it != neighborIntervals->end(); ++interval_it) {
-          std::cout << "(" << (x+x_delta) << "," << (y+y_delta) << ")\n"; 
+          //std::cout << "(" << (x+x_delta) << "," << (y+y_delta) << ")\n"; 
           double interval_mean = interval_it->mean;
           double interval_std = interval_it->std;
-          std::cout << "Mean: " << interval_mean << "\n";
-          std::cout << "Std: " << interval_std << "\n";
+          //std::cout << "Mean: " << interval_mean << "\n";
+          //std::cout << "Std: " << interval_std << "\n";
           // check if z is within 2 std of mean
           if(z >= interval_mean-(2*interval_std) && z <= interval_mean+(2*interval_std)) {
-            validNeighborPos[i]={x + x_delta, y + y_delta, z}; // unsure about z to return for neighbor?
+            validNeighborIntervals[i]=&*interval_it; // stores pointer to interval in array
           }
         }
       }
@@ -272,7 +299,7 @@ class levelMap {
     if(posMap.find(searchPos)!=posMap.end()) {
       return &posMap[searchPos];
     }
-    std::cout << "Value not in map\n";
+    //std::cout << "Value not in map\n";
     return NULL;
   }
 
@@ -318,14 +345,18 @@ class levelMap {
       printCell(x,y);
     }
     // test neighbors
-    std::vector<double> validNeighborPos[8];
-    getNeighbors(0.825,4.425,2.0,validNeighborPos);
+    interval* validNeighborIntervals[8];
+    getNeighbors(0.825,4.425,2.0,validNeighborIntervals);
     // print neighbors
     std::cout << "Neighbors: ";
     for(int i=0;i<8;i++) {
-      //if vector is not empty
-      if(!validNeighborPos[i].empty()) {
-        std::cout << "(" << validNeighborPos[i][0] << "," << validNeighborPos[i][1] << ") \n";
+      // if interval is not NULL
+      if(validNeighborIntervals[i]!=NULL) {
+        // computer interval pos
+
+        // print interval mean
+        std::cout << "Interval Mean: " << validNeighborIntervals[i]->mean;
+        //std::cout << "(" << validNeighborPos[i][0] << "," << validNeighborPos[i][1] << ") \n";
       }
     }
   }
@@ -341,7 +372,8 @@ class levelMap {
       markerMsg.action = visualization_msgs::Marker::ADD;
       markerMsg.pose.orientation.w=1.0;
       markerMsg.type=visualization_msgs::Marker::CUBE_LIST;
-    
+      markerMsg.lifetime=ros::Duration();
+
       markerMsg.scale.x=res;
       markerMsg.scale.y=res;
       markerMsg.scale.z=0.05;
@@ -365,9 +397,13 @@ class levelMap {
           if(item.intervalType==false) {
             c.r=1; c.g=0; c.b=0; c.a=1;
           }
-          // color plane yellow if interval is horizontal
-          else {
+          // color plane yellow if interval is horizontal and traversable
+          else if(isTraversible(temp.x,temp.y,temp.z)) {
             c.r=1; c.g=1; c.b=0; c.a=1;
+          }
+          // color plane blue if interval is horizontal and not traversible
+          else {
+            c.r=0; c.g=0; c.b=1; c.a=1;
           }
           markerMsg.colors.push_back(c);
         }
@@ -383,9 +419,9 @@ class levelMap {
         sleep(1);
       }
       marker_pub.publish(markerMsg);
-      markerMsg.points.clear();
-      markerMsg.colors.clear();      
-
+      //markerMsg.points.clear();
+      //markerMsg.colors.clear();      
+      mapPublished=true;
   }
 };
 
@@ -439,6 +475,7 @@ int main(int argc, char **argv) {
       newMap=levelMap();
       newMap.setOctomap(octree);
       newMap.genMap();
+      newMap.testing();
     }
   }
   // display map in rviz
@@ -446,7 +483,9 @@ int main(int argc, char **argv) {
     r.sleep();
     ros::spinOnce();
     std::cout << "Displaying Map...\n";
-    newMap.displayMap(marker_pub);
+    if(newMap.mapPublished==false) {
+      newMap.displayMap(marker_pub);
+    }
   }
   //after receiving map
   return 0;
