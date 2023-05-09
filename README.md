@@ -7,7 +7,7 @@ Based on [this paper](https://ieeexplore.ieee.org/document/4058725)
 
 By [Dylan Kriegman](https://github.com/dylankrieg?tab=repositories) and [Andrew Mills](https://github.com/andrewbmills)
 
-![alt text]([http://url/to/img.png](https://github.com/dylankrieg/map-data-structure/blob/main/Floor-Segmentation.png))
+![Floor-Segmentation](https://github.com/dylankrieg/map-data-structure/blob/49ebc547fb99373405c2595fe7102507c6101295/Floor-Segmentation.png))
 
 
 Installing Dependencies:
