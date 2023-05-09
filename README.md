@@ -5,10 +5,9 @@ IN-PROGRESS
 
 Based on [this paper](https://ieeexplore.ieee.org/document/4058725)
 
-By [Dylan Kriegman](https://github.com/dylankrieg?tab=repositories) and [Andrew Mills](https://github.com/andrewbmills)
-
 ![Floor-Segmentation](https://github.com/dylankrieg/map-data-structure/blob/49ebc547fb99373405c2595fe7102507c6101295/Floor-Segmentation.png))
 
+By [Dylan Kriegman](https://github.com/dylankrieg?tab=repositories) and [Andrew Mills](https://github.com/andrewbmills)
 
 Installing Dependencies:
 
